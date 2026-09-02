@@ -187,6 +187,20 @@
 
     .day-head div:last-child{border-right:0}
 
+    .day-head div{
+      position:relative;
+      flex-direction:column;
+      gap:2px;
+    }
+    .day-head div span{line-height:1}
+    .day-head .date-label{font-size:11px;font-weight:600;color:#8e9088;line-height:1}
+    .day-head div.is-today{background:#f0f4ef;color:#173d31}
+    .day-head div.is-today::after{
+      content:"今天";position:absolute;top:5px;right:7px;padding:2px 5px;border-radius:999px;
+      background:#203b32;color:#fff;font-size:9px;font-weight:700;
+    }
+    .course.is-today-course{outline:2px solid rgba(32,59,50,.22);outline-offset:-2px}
+
     .day-head small{
       color:#a1a197;
       font-weight:500;
@@ -402,12 +416,17 @@
       }
 
       .course::before{
-        content:attr(data-day) " · " attr(data-time);
+        content:attr(data-day) " · " attr(data-date) " · " attr(data-time);
         display:block;
         margin-bottom:7px;
         font-size:11px;
         font-weight:700;
         color:rgba(32,37,31,.55);
+      }
+      .course.is-today-course{outline:2px solid #203b32;outline-offset:-2px}
+      .course.is-today-course::after{
+        content:"今天";position:absolute;right:12px;top:10px;padding:3px 7px;border-radius:999px;
+        background:#203b32;color:#fff;font-size:9px;font-weight:700;
       }
 
       .course .name{
@@ -487,12 +506,12 @@
       </aside>
 
       <div class="days">
-        <div class="day-head">
-          <div>星期一 <small>MON</small></div>
-          <div>星期二 <small>TUE</small></div>
-          <div>星期三 <small>WED</small></div>
-          <div>星期四 <small>THU</small></div>
-          <div>星期五 <small>FRI</small></div>
+        <div class="day-head" id="dayHead">
+          <div data-day-head="1"><span>星期一</span><small>MON</small><b class="date-label"></b></div>
+          <div data-day-head="2"><span>星期二</span><small>TUE</small><b class="date-label"></b></div>
+          <div data-day-head="3"><span>星期三</span><small>WED</small><b class="date-label"></b></div>
+          <div data-day-head="4"><span>星期四</span><small>THU</small><b class="date-label"></b></div>
+          <div data-day-head="5"><span>星期五</span><small>FRI</small><b class="date-label"></b></div>
         </div>
         <div class="grid" id="grid">
           <div class="empty-note">第 9～11 节目前没有安排</div>
@@ -501,7 +520,7 @@
     </section>
 
     <div class="footer">
-      <span>按截图中的周次规则显示课程；切换周次后会自动隐藏未开课课程。</span>
+      <span>第一周为 2026/9/7—9/13；页面按北京时间自动定位当前周，并标出今天。</span>
       <span>适合桌面查看，也可以直接打印。</span>
     </div>
   </main>
@@ -577,6 +596,43 @@ function weekLabel(arr){
   return chunks.join("、")+" 周";
 }
 
+const semesterStart = new Date("2026-09-07T00:00:00+08:00");
+const semesterWeeks = 18;
+
+function beijingDateParts(){
+  const parts = new Intl.DateTimeFormat("zh-CN",{
+    timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit",weekday:"short"
+  }).formatToParts(new Date());
+  const map = Object.fromEntries(parts.map(p=>[p.type,p.value]));
+  return {year:+map.year,month:+map.month,day:+map.day,weekday:map.weekday};
+}
+function dateInBeijing(y,m,d){
+  return new Date(`${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}T00:00:00+08:00`);
+}
+function getTodayBeijing(){const p=beijingDateParts();return dateInBeijing(p.year,p.month,p.day)}
+function diffDays(a,b){return Math.floor((a.getTime()-b.getTime())/86400000)}
+function weekFromDate(date){
+  const d=diffDays(date,semesterStart);
+  if(d<0)return 1;
+  return Math.min(semesterWeeks,Math.max(1,Math.floor(d/7)+1));
+}
+function weekStartDate(week){return new Date(semesterStart.getTime()+(week-1)*7*86400000)}
+function formatMD(date){return `${date.getMonth()+1}/${date.getDate()}`}
+function dateForCourseDay(week,day){return new Date(weekStartDate(week).getTime()+(day-1)*86400000)}
+function sameDate(a,b){return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate()}
+function updateWeekDates(week){
+  const today=getTodayBeijing();
+  document.querySelectorAll("[data-day-head]").forEach(el=>{
+    const day=+el.dataset.dayHead;
+    const d=dateForCourseDay(week,day);
+    el.querySelector(".date-label").textContent=formatMD(d);
+    el.classList.toggle("is-today",sameDate(d,today));
+  });
+  const start=weekStartDate(week);
+  const end=new Date(start.getTime()+6*86400000);
+  document.getElementById("weekText").textContent=`第 ${week} 周 · ${start.getMonth()+1}月${start.getDate()}日—${end.getMonth()+1}月${end.getDate()}日`;
+}
+
 function render(week){
   grid.querySelectorAll(".course").forEach(el=>el.remove());
   const active = courses.filter(c=>c.weeks.includes(week));
@@ -589,6 +645,10 @@ function render(week){
     const left=((c.day-1)*20);
     el.className=`course ${c.color} ${h<120?"compact":""}`;
     el.dataset.day = ["星期一","星期二","星期三","星期四","星期五"][c.day-1];
+    const courseDate = dateForCourseDay(week,c.day);
+    const todayBJ = getTodayBeijing();
+    el.dataset.date = formatMD(courseDate);
+    el.classList.toggle("is-today-course",sameDate(courseDate,todayBJ));
     const startTime = times[c.start-1][1].split("–")[0];
     const endTime = times[c.end-1][1].split("–")[1];
     el.dataset.time = `${startTime}–${endTime}`;
@@ -606,15 +666,24 @@ function render(week){
 
   const unique = new Set(active.map(c=>c.name));
   document.getElementById("courseCount").textContent = `${unique.size} 门课`;
-  document.getElementById("weekText").textContent = `第 ${week} 周 · 把课排明白，其他时间留给自己`;
+  updateWeekDates(week);
 
   const blocks = active.reduce((n,c)=>n+(c.end-c.start+1),0);
   const busy = blocks >= 20 ? "这周排得挺满" : blocks >= 14 ? "这周节奏正常" : "这周比较松";
   document.getElementById("busyText").textContent = busy;
 }
 
-weekSelect.value="1";
-render(1);
+const todayBJ = getTodayBeijing();
+const autoWeek = weekFromDate(todayBJ);
+weekSelect.value=String(autoWeek);
+render(autoWeek);
+
+requestAnimationFrame(()=>{
+  const todayCourse=document.querySelector(".course.is-today-course");
+  if(todayCourse && window.innerWidth<=720){
+    todayCourse.scrollIntoView({behavior:"smooth",block:"center"});
+  }
+});
 
 weekSelect.addEventListener("change",()=>render(+weekSelect.value));
 document.getElementById("prevWeek").addEventListener("click",()=>{
